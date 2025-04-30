@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Retro Fighter</title>
+  <style>
+    body {
+      margin: 0;
+      background: black;
+      color: white;
+      font-family: sans-serif;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      margin: auto;
+      background: #111;
+      image-rendering: pixelated;
+    }
+    #health {
+      width: 100%;
+      text-align: center;
+      margin-top: 10px;
+    }
+    .bar {
+      width: 300px;
+      height: 20px;
+      background: red;
+      margin: 5px auto;
+      border: 2px solid white;
+    }
+    .bar-inner {
+      height: 100%;
+      background: lime;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game" width="800" height="400"></canvas>
+  <div id="health">
+    <div class="bar"><div id="p1bar" class="bar-inner"></div></div>
+    <div class="bar"><div id="p2bar" class="bar-inner"></div></div>
+  </div>
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    const p1bar = document.getElementById("p1bar");
+    const p2bar = document.getElementById("p2bar");
+
+    const keys = {};
+    document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+    document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+    class Fighter {
+      constructor(x, color) {
+        this.x = x;
+        this.y = 300;
+        this.width = 40;
+        this.height = 80;
+        this.color = color;
+        this.health = 100;
+        this.blocking = false;
+        this.velocityY = 0;
+        this.onGround = true;
+      }
+
+      draw() {
+        // body
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        // mask
+        ctx.fillStyle = "gray";
+        ctx.fillRect(this.x + 10, this.y + 10, 20, 20);
+        // hands
+        ctx.fillStyle = "white";
+        ctx.fillRect(this.x - 10, this.y + 30, 10, 10); // left hand
+        ctx.fillRect(this.x + this.width, this.y + 30, 10, 10); // right hand
+      }
+
+      hit(damage) {
+        if (this.blocking) damage /= 2;
+        this.health = Math.max(0, this.health - damage);
+      }
+
+      update() {
+        this.y += this.velocityY;
+        this.velocityY += 1;
+        if (this.y >= 300) {
+          this.y = 300;
+          this.velocityY = 0;
+          this.onGround = true;
+        } else {
+          this.onGround = false;
+        }
+      }
+    }
+
+    const p1 = new Fighter(100, "blue");
+    const p2 = new Fighter(600, "red");
+
+    let fireballs = [];
+
+    function attack(attacker, defender, type) {
+      const range = 60;
+      if (Math.abs(attacker.x - defender.x) < range) {
+        let damage = 0;
+        switch(type) {
+          case "high punch": damage = 10; break;
+          case "low punch":  damage = 5; break;
+          case "high kick":  damage = 10; break; // Lowered kick damage
+          case "low kick":   damage = 8; break;  // Lowered kick damage
+          case "fireball":   damage = 15; break; // Fireball damage
+        }
+        defender.hit(damage);
+      }
+    }
+
+    function updateHealthBars() {
+      p1bar.style.width = `${p1.health}%`;
+      p2bar.style.width = `${p2.health}%`;
+    }
+
+    function update() {
+      // P1 movement
+      if (keys["arrowleft"])  p1.x -= 5;
+      if (keys["arrowright"]) p1.x += 5;
+
+      // P1 jump
+      if (keys[" "] && p1.onGround) {
+        p1.velocityY = -15;
+        p1.onGround = false;
+      }
+
+      // P1 attacks
+      if (keys["w"]) { attack(p1, p2, "high punch"); keys["w"] = false; }
+      if (keys["e"]) { attack(p1, p2, "low punch"); keys["e"] = false; }
+      if (keys["a"]) { attack(p1, p2, "high kick"); keys["a"] = false; }
+      if (keys["s"]) { attack(p1, p2, "low kick");  keys["s"] = false; }
+      if (keys["f"]) { fireballs.push({x: p1.x + p1.width, y: p1.y + p1.height / 2, direction: 1}); keys["f"] = false; }
+      p1.blocking = keys["z"];
+
+      // CPU AI Movement: faster and more responsive
+      const dx = p2.x - p1.x;
+      if (dx > 60) p2.x -= 6; // AI moves faster
+      if (dx < 40) p2.x += 6; // AI moves faster
+
+      // Simple AI attack
+      if (Math.random() < 0.05) { // AI attacks more often
+        const moves = ["high punch", "low punch", "high kick", "low kick"];
+        const move = moves[Math.floor(Math.random() * moves.length)];
+        attack(p2, p1, move);
+      }
+
+      // Move fireballs
+      fireballs.forEach(fireball => {
+        fireball.x += fireball.direction * 10;
+        if (fireball.x > canvas.width || fireball.x < 0) fireball.direction = -fireball.direction; // Bounce off edges
+        attack(p1, p2, "fireball");
+        attack(p2, p1, "fireball");
+      });
+
+      p1.update();
+      p2.update();
+
+      updateHealthBars();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      p1.draw();
+      p2.draw();
+
+      // Draw fireballs
+      fireballs.forEach(fireball => {
+        ctx.fillStyle = "yellow";
+        ctx.beginPath();
+        ctx.arc(fireball.x, fireball.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function loop() {
+      update();
+      draw();
+      if (p1.health <= 0 || p2.health <= 0) {
+        ctx.fillStyle = "white";
+        ctx.font = "30px sans-serif";
+        ctx.fillText(p1.health <= 0 ? "Player 2 Wins!" : "Player 1 Wins!", 300, 200);
+      } else {
+        requestAnimationFrame(loop);
+      }
+    }
+
+    loop();
+  </script>
+</body>
+</html>
